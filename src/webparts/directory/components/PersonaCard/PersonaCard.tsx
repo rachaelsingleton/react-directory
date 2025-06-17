@@ -12,7 +12,11 @@ import {
   Subtitle1,
   Text,
 } from '@fluentui/react-components';
-import { Call16Filled, Location16Filled } from '@fluentui/react-icons';
+import {
+  Call16Filled,
+  Location16Filled,
+  Mail16Filled,
+} from '@fluentui/react-icons';
 import { LIVE_PERSONA_COMPONENT_ID, EXP_SOURCE } from '../../../../constants';
 
 export class PersonaCard extends React.Component<
@@ -88,6 +92,14 @@ export class PersonaCard extends React.Component<
           <Text className={styles.others}>
             {this.props.profileProperties.Department}
           </Text>
+          {this.props.profileProperties.Email && (
+            <div className={(styles.textOverflow, styles.others)}>
+              <Mail16Filled style={{ fontSize: '12px' }} />
+              <span style={{ marginLeft: 5, fontSize: '12px' }}>
+                {this.props.profileProperties.Email}
+              </span>
+            </div>
+          )}
           {this.props.profileProperties.WorkPhone ? (
             <div className={styles.others}>
               <Call16Filled style={{ fontSize: '12px' }} />
