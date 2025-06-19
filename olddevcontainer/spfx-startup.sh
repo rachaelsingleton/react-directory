@@ -1,7 +1,6 @@
 echo
 echo -e "\e[1;94mInstalling Node dependencies\e[0m"
-npm ci --verbose
-
+npm install
 
 ## commands to create dev certificate and copy it to the root folder of the project
 echo
