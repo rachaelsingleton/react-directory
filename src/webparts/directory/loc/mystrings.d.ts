@@ -12,6 +12,8 @@ declare interface IDirectoryWebPartStrings {
   ClearTextSearchPropsLabel: string;
   ClearTextSearchPropsDesc: string;
   PagingLabel: string;
+  FilterQueryLabel: string;
+  FilterQueryDesc: string;
 }
 
 declare module 'DirectoryWebPartStrings' {

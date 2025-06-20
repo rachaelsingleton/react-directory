@@ -12,6 +12,8 @@ define([], function() {
     "SearchPropsDesc": "Enter the properties separated by comma to be used for search",
     "ClearTextSearchPropsLabel":"Properties whose values are not replaced",
     "ClearTextSearchPropsDesc":"Enter the properties separated by comma to be sent as it is without replacing space with '+'",
-    "PagingLabel": "Results per page"
+    "PagingLabel": "Results per page",
+    "FilterQueryLabel": "Filter Query",
+    "FilterQueryDesc": "Additional search filter e.g. Department:IT OR BaseOfficeLocation:London"
   }
 });

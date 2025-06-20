@@ -137,16 +137,30 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
     let users = null;
     if (initialSearch) {
       if (props.searchFirstName)
-        users = await _services.searchUsersNew('', `FirstName:a*`, false);
-      else users = await _services.searchUsersNew('a', '', true);
+        users = await _services.searchUsersNew(
+          '',
+          `FirstName:a*${props.filterQuery ? ` AND ${props.filterQuery}` : ''}`,
+          false
+        );
+      else
+        users = await _services.searchUsersNew(
+          'a',
+          props.filterQuery ? `${props.filterQuery}` : '',
+          true
+        );
     } else {
       if (props.searchFirstName)
         users = await _services.searchUsersNew(
           '',
-          `FirstName:${alphaKey}*`,
+          `FirstName:${alphaKey}*${props.filterQuery ? ` AND ${props.filterQuery}` : ''}`,
           false
         );
-      else users = await _services.searchUsersNew(`${alphaKey}`, '', true);
+      else
+        users = await _services.searchUsersNew(
+          `${alphaKey}`,
+          props.filterQuery ? `${props.filterQuery}` : '',
+          true
+        );
     }
     setstate({
       ...state,
@@ -208,7 +222,10 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
           });
         }
         console.log(qryText);
-        const users = await _services.searchUsersNew('', qryText, false);
+        const finalQuery = props.filterQuery
+          ? `${qryText} AND ${props.filterQuery}`
+          : qryText;
+        const users = await _services.searchUsersNew('', finalQuery, false);
         setstate({
           ...state,
           searchText: searchText,

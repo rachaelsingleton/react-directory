@@ -32,6 +32,7 @@ export interface IDirectoryWebPartProps {
   clearTextSearchProps: string;
   pageSize: number;
   justifycontent: boolean;
+  filterQuery: string;
 }
 
 export enum AppMode {
@@ -67,6 +68,7 @@ export default class DirectoryWebPart extends BaseClientSideWebPart<IDirectoryWe
         useSpaceBetween: this.properties.justifycontent,
         isDarkTheme: this._isDarkTheme,
         hasTeamsContext: !!this.context.sdks.microsoftTeams,
+        filterQuery: this.properties.filterQuery,
       }
     );
 
@@ -203,6 +205,13 @@ export default class DirectoryWebPart extends BaseClientSideWebPart<IDirectoryWe
                   min: 2,
                   step: 2,
                   value: this.properties.pageSize,
+                }),
+                PropertyPaneTextField('filterQuery', {
+                  label: strings.FilterQueryLabel,
+                  description: strings.FilterQueryDesc,
+                  value: this.properties.filterQuery,
+                  multiline: false,
+                  resizable: false,
                 }),
               ],
             },
