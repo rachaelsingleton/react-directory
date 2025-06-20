@@ -74,6 +74,15 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
   ];
   const color = props.context.microsoftTeams ? 'white' : '';
 
+  const buildFilterQuery = (): string => {
+    const filters: string[] = [];
+    if (props.officeLocationFilter)
+      filters.push(`BaseOfficeLocation:${props.officeLocationFilter}`);
+    if (props.cityFilter) filters.push(`City:${props.cityFilter}`);
+    if (props.departmentFilter) filters.push(`Department:${props.departmentFilter}`);
+    return filters.join(' AND ');
+  };
+
   // Paging
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [pagedItems, setPagedItems] = useState<any[]>([]);
@@ -134,20 +143,13 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
   };
   const _searchByAlphabets = async (initialSearch: boolean): Promise<void> => {
     setstate({ ...state, isLoading: true, searchText: '' });
-    let users = null;
-    if (initialSearch) {
-      if (props.searchFirstName)
-        users = await _services.searchUsersNew('', `FirstName:a*`, false);
-      else users = await _services.searchUsersNew('a', '', true);
-    } else {
-      if (props.searchFirstName)
-        users = await _services.searchUsersNew(
-          '',
-          `FirstName:${alphaKey}*`,
-          false
-        );
-      else users = await _services.searchUsersNew(`${alphaKey}`, '', true);
-    }
+    const letter = initialSearch ? 'a' : alphaKey.toLowerCase();
+    const baseQuery = props.searchFirstName
+      ? `FirstName:${letter}*`
+      : `FirstName:${letter}* OR LastName:${letter}*`;
+    const filter = buildFilterQuery();
+    const query = filter ? `${baseQuery} AND ${filter}` : baseQuery;
+    const users = await _services.searchUsersNew('', query, false);
     setstate({
       ...state,
       searchText: '',
@@ -208,7 +210,9 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
           });
         }
         console.log(qryText);
-        const users = await _services.searchUsersNew('', qryText, false);
+        const filter = buildFilterQuery();
+        const finalQuery = filter ? `${qryText} AND ${filter}` : qryText;
+        const users = await _services.searchUsersNew('', finalQuery, false);
         setstate({
           ...state,
           searchText: searchText,

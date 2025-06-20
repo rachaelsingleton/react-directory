@@ -12,6 +12,9 @@ declare interface IDirectoryWebPartStrings {
   ClearTextSearchPropsLabel: string;
   ClearTextSearchPropsDesc: string;
   PagingLabel: string;
+  OfficeLocationFilterLabel: string;
+  CityFilterLabel: string;
+  DepartmentFilterLabel: string;
 }
 
 declare module 'DirectoryWebPartStrings' {

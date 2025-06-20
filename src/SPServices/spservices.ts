@@ -43,6 +43,7 @@ export class spservices implements ISPServices {
       'MobilePhone',
       'JobTitle',
       'Department',
+      'City',
       'Skills',
       'PastProjects',
       'BaseOfficeLocation',

@@ -11,6 +11,9 @@ export interface IDirectoryProps {
   clearTextSearchProps?: string;
   pageSize?: number;
   useSpaceBetween?: boolean;
+  officeLocationFilter?: string;
+  cityFilter?: string;
+  departmentFilter?: string;
   isDarkTheme: boolean;
   hasTeamsContext: boolean;
 }

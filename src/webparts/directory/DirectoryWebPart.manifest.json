@@ -24,7 +24,10 @@
       "title": "Directory",
       "searchFirstName":  0,
       "searchProps": "FirstName,LastName,PreferredName,WorkEmail,Department",
-      "pageSize": 10
+      "pageSize": 10,
+      "officeLocationFilter": "",
+      "cityFilter": "",
+      "departmentFilter": ""
     }
   }]
 }

@@ -32,6 +32,9 @@ export interface IDirectoryWebPartProps {
   clearTextSearchProps: string;
   pageSize: number;
   justifycontent: boolean;
+  officeLocationFilter: string;
+  cityFilter: string;
+  departmentFilter: string;
 }
 
 export enum AppMode {
@@ -65,6 +68,9 @@ export default class DirectoryWebPart extends BaseClientSideWebPart<IDirectoryWe
         clearTextSearchProps: this.properties.clearTextSearchProps,
         pageSize: this.properties.pageSize,
         useSpaceBetween: this.properties.justifycontent,
+        officeLocationFilter: this.properties.officeLocationFilter,
+        cityFilter: this.properties.cityFilter,
+        departmentFilter: this.properties.departmentFilter,
         isDarkTheme: this._isDarkTheme,
         hasTeamsContext: !!this.context.sdks.microsoftTeams,
       }
@@ -203,6 +209,18 @@ export default class DirectoryWebPart extends BaseClientSideWebPart<IDirectoryWe
                   min: 2,
                   step: 2,
                   value: this.properties.pageSize,
+                }),
+                PropertyPaneTextField('officeLocationFilter', {
+                  label: strings.OfficeLocationFilterLabel,
+                  value: this.properties.officeLocationFilter,
+                }),
+                PropertyPaneTextField('cityFilter', {
+                  label: strings.CityFilterLabel,
+                  value: this.properties.cityFilter,
+                }),
+                PropertyPaneTextField('departmentFilter', {
+                  label: strings.DepartmentFilterLabel,
+                  value: this.properties.departmentFilter,
                 }),
               ],
             },
