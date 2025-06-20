@@ -57,6 +57,7 @@ Search People from Organization Directory and show live persona card on hover.
 |Properties to search | text | No | By default **FirstName,LastName,WorkEmail,Department** are used for search. You can add custom properties separated by comma.|
 |Properties to sent as clear text | text | No | By default if the search key has empty spaces, its replaced with **+** before sending it to the search query. The search properties mentioned here will be sent without the empty space replacement.|
 |Results per page | number | Yes | Number of people result to be displayed per page. Max of **20** is allowed, default of **10** is set.|
+|Filter Query| text | No | Additional search filter such as `Department:IT` or `BaseOfficeLocation:London`.|
 
 ## Contributors
 

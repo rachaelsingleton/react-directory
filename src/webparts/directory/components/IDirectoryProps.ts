@@ -13,4 +13,5 @@ export interface IDirectoryProps {
   useSpaceBetween?: boolean;
   isDarkTheme: boolean;
   hasTeamsContext: boolean;
+  filterQuery?: string;
 }
