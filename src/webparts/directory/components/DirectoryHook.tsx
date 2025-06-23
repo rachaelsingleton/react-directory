@@ -98,11 +98,11 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
   };
 
   // 4) Build $filter for alpha & text searches (Graph-supported)
-  const buildGraphFilter = (mode: 'alpha' | 'search'): string[] => {
+  const buildGraphFilter = (mode: 'initial' | 'alpha' | 'search'): string[] => {
     const clauses: string[] = [];
 
-    // alphabet filter
-    if (mode === 'alpha' && alphaKey !== '0') {
+    // alpha (or initial) filter, skip when "All" selected
+    if ((mode === 'initial' || mode === 'alpha') && alphaKey !== 'All') {
       const nameField = searchFirstName ? 'givenName' : 'surname';
       clauses.push(`startswith(${nameField},'${alphaKey}')`);
     }
@@ -126,13 +126,13 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
 
   // 5) Component state
   const [az, setAz] = useState<string[]>([]);
-  const [alphaKey, setAlphaKey] = useState<string>('A');
+  const [alphaKey, setAlphaKey] = useState<string>('All');
   const [state, setState] = useState<IDirectoryState>({
     users: [],
     isLoading: true,
     errorMessage: '',
     hasError: false,
-    indexSelectedKey: 'A',
+    indexSelectedKey: 'All',
     searchString: 'LastName',
     searchText: '',
   });
@@ -171,7 +171,7 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
       req = req.select(selectFields).top(999);
 
       // apply alpha/text filters server-side
-      const odataClauses = buildGraphFilter(mode === 'initial' ? 'alpha' : mode);
+      const odataClauses = buildGraphFilter(mode);
       if (odataClauses.length) {
         req = req.filter(odataClauses.join(' and '));
       }
@@ -182,16 +182,20 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
       // apply dynamic filterQuery client-side
       users = applyClientFilter(users);
 
+      // determine which tab stays selected
+      const selKey = mode === 'search' ? '0' : alphaKey;
+
       setState(s => ({
         ...s,
         users,
         isLoading: false,
         hasError: false,
         errorMessage: '',
-        indexSelectedKey: mode === 'initial' ? 'A' : (mode === 'alpha' ? alphaKey : '0'),
+        indexSelectedKey: selKey,
       }));
       setPagedItems(users.slice(0, pageSize));
       setCurrentPage(1);
+
     } catch (e: any) {
       setState(s => ({
         ...s,
@@ -204,7 +208,7 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
 
   // 8) Handlers
   const onAlphabetClick = (ev?: any) => {
-    const key = ev?.target?.innerText ?? 'A';
+    const key = ev?.target?.innerText ?? 'All';
     setAlphaKey(key);
     fetchUsers('alpha');
   };
@@ -223,9 +227,13 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
   }, [state.searchText]);
 
   // 9) Effects
-  // initial load & on filterQuery change
   useEffect(() => {
-    setAz(Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i)));
+    // build [All, A, B, … Z]
+    const letters = Array.from({ length: 26 }, (_, i) =>
+      String.fromCharCode(65 + i)
+    );
+    setAz(['All', ...letters]);
+
     fetchUsers('initial');
   }, [filterQuery]);
 
