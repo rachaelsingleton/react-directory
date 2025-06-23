@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import { MSGraphClient } from '@microsoft/sp-http';
 import { Stack, IStackTokens } from 'office-ui-fabric-react/lib/Stack';
 import { WebPartTitle } from '@pnp/spfx-controls-react';
 import {
@@ -22,19 +23,16 @@ import {
 } from '@fluentui/react-components';
 import { People48Filled } from '@fluentui/react-icons';
 
-import { ISPServices } from '../../../SPServices/ISPServices';
 import { IDirectoryProps } from './IDirectoryProps';
 import Paging from './Pagination/Paging';
 import { OverflowAlphabetsMenu } from './OverflowAlphabetsMenu/OverflowAlphabetsMenu';
 import styles from './Directory.module.scss';
 import { PersonaCard } from './PersonaCard/PersonaCard';
-import { spservices } from '../../../SPServices/spservices';
 import { IDirectoryState } from './IDirectoryState';
 import * as strings from 'DirectoryWebPartStrings';
 import { Shimmer } from './Shimmer/Shimmer';
 
 const wrapStackTokens: IStackTokens = { childrenGap: 30 };
-
 const useFluentStyles = makeStyles({
   alphabets: {
     backgroundColor: tokens.colorNeutralBackground2,
@@ -53,45 +51,83 @@ const useFluentStyles = makeStyles({
 });
 
 const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
-  const _services: ISPServices = new spservices(props.context);
+  const {
+    context,
+    displayMode,
+    title,
+    updateProperty,
+    searchFirstName,
+    searchProps,
+    pageSize: propPageSize,
+    filterQuery,
+    useSpaceBetween
+  } = props;
 
-  // parse filterQuery (e.g. "department:Retail" or "officeLocation:Portland")
+  // 1) Parse the dynamic filterQuery (e.g. "department:Retail")
   const filterFieldValue = useMemo(() => {
-    if (!props.filterQuery) return null;
-    const [field, ...rest] = props.filterQuery.split(':');
+    if (!filterQuery) return null;
+    const [raw, ...rest] = filterQuery.split(':');
     return {
-      field: field.trim().toLowerCase(),
+      field: raw.trim().toLowerCase(),
       value: rest.join(':').trim().toLowerCase(),
     };
-  }, [props.filterQuery]);
+  }, [filterQuery]);
 
-// parse filterQuery as before
-const filterFieldValue = useMemo(() => {
-  if (!props.filterQuery) return null;
-  const [field, ...rest] = props.filterQuery.split(':');
-  return {
-    field: field.trim().toLowerCase(),
-    value: rest.join(':').trim().toLowerCase(),
+  // 2) Map alias → real Graph property names
+  const graphFieldName = (f: string) => {
+    switch (f.toLowerCase()) {
+      case 'department':     return 'department';
+      case 'officelocation': // alias "location:" or "officeLocation:"
+      case 'location':       return 'officeLocation';
+      case 'firstname':      return 'givenName';
+      case 'lastname':       return 'surname';
+      case 'workemail':      return 'mail';
+      default:               return f;
+    }
   };
-}, [props.filterQuery]);
 
-// new dynamic applyFilter
-  const applyFilter = (users: any[]): any[] => {
+  // 3) Apply filterQuery client-side
+  const applyClientFilter = (users: any[]): any[] => {
     if (!filterFieldValue) return users;
-    const { field, value } = filterFieldValue;
-
-    return users.filter(u => {
-      // find the property on the user object that matches the filter field (case-insensitive)
-      const key = Object.keys(u).find(k => k.toLowerCase() === field);
-      if (!key) return false;
-      const propVal = u[key];
-      return String(propVal).toLowerCase() === value;
-    });
+    const key = graphFieldName(filterFieldValue.field);
+    return users.filter(u =>
+      String(u[key] || '')
+        .toLowerCase()
+        .trim() === filterFieldValue.value
+    );
   };
 
-  const [az, setaz] = useState<string[]>([]);
-  const [alphaKey, setalphaKey] = useState<string>('A');
-  const [state, setstate] = useState<IDirectoryState>({
+  // 4) Build $filter for alpha & text searches (Graph-supported)
+  const buildGraphFilter = (mode: 'alpha' | 'search'): string[] => {
+    const clauses: string[] = [];
+
+    // alphabet filter
+    if (mode === 'alpha' && alphaKey !== '0') {
+      const nameField = searchFirstName ? 'givenName' : 'surname';
+      clauses.push(`startswith(${nameField},'${alphaKey}')`);
+    }
+
+    // text-search filter
+    if (mode === 'search' && state.searchText.trim()) {
+      const txt = state.searchText.trim().replace(/'/g, "''");
+      const propsToSearch = searchProps
+        ? searchProps.split(',').map(s => s.trim())
+        : ['FirstName', 'LastName', 'WorkEmail', 'Department'];
+      const sub = propsToSearch.map(p =>
+        `startswith(${graphFieldName(p.toLowerCase())},'${txt}')`
+      );
+      if (sub.length) {
+        clauses.push(`(${sub.join(' or ')})`);
+      }
+    }
+
+    return clauses;
+  };
+
+  // 5) Component state
+  const [az, setAz] = useState<string[]>([]);
+  const [alphaKey, setAlphaKey] = useState<string>('A');
+  const [state, setState] = useState<IDirectoryState>({
     users: [],
     isLoading: true,
     errorMessage: '',
@@ -100,339 +136,236 @@ const filterFieldValue = useMemo(() => {
     searchString: 'LastName',
     searchText: '',
   });
-
-  const orderOptions = [
-    { value: 'FirstName', text: 'First Name' },
-    { value: 'LastName', text: 'Last Name' },
-    { value: 'Department', text: 'Department' },
-    { value: 'Location', text: 'Location' },
-    { value: 'JobTitle', text: 'Job Title' },
-  ];
-  const color = props.context.microsoftTeams ? 'white' : '';
-
-  // Paging
   const [pagedItems, setPagedItems] = useState<any[]>([]);
-  const [pageSize, setPageSize] = useState<number>(
-    props.pageSize ? props.pageSize : 10
-  );
+  const [pageSize, setPageSize] = useState<number>(propPageSize ?? 10);
   const [currentPage, setCurrentPage] = useState<number>(1);
 
-  const _onPageUpdate = async (pageno?: number): Promise<void> => {
-    const currentPge = pageno ? pageno : currentPage;
-    const startItem = (currentPge - 1) * pageSize;
-    const endItem = currentPge * pageSize;
-    const filItems = state.users.slice(startItem, endItem);
-    setCurrentPage(currentPge);
-    setPagedItems(filItems);
-  };
-
-  const diretoryGrid =
-    pagedItems && pagedItems.length > 0
-      ? pagedItems.map((user: any, i) => (
-          <PersonaCard
-            context={props.context}
-            key={'PersonaCard' + i}
-            profileProperties={{
-              DisplayName: user.PreferredName,
-              Title: user.JobTitle,
-              PictureUrl: user.PictureURL,
-              Email: user.WorkEmail,
-              Department: user.Department,
-              WorkPhone: user.WorkPhone,
-              Location: user.OfficeNumber
-                ? user.OfficeNumber
-                : user.BaseOfficeLocation,
-            }}
-          />
-        ))
-      : [];
-
-  const _loadAlphabets = (): void => {
-    const alphabets: string[] = [];
-    for (let i = 65; i < 91; i++) {
-      alphabets.push(String.fromCharCode(i));
-    }
-    setaz(alphabets);
-  };
-
-  const _alphabetChange = async (item?: any): Promise<void> => {
-    setstate({
-      ...state,
-      searchText: '',
-      indexSelectedKey: item.target.innerText,
-      isLoading: true,
-    });
-    setalphaKey(item.target.innerText);
-    setCurrentPage(1);
-  };
-
-  const _searchByAlphabets = async (
-    initialSearch: boolean
-  ): Promise<void> => {
-    setstate({ ...state, isLoading: true, searchText: '' });
-    let resp: any = null;
-
-    if (initialSearch) {
-      resp = props.searchFirstName
-        ? await _services.searchUsersNew('', `FirstName:a*`, false)
-        : await _services.searchUsersNew('a', '', true);
-    } else {
-      resp = props.searchFirstName
-        ? await _services.searchUsersNew(
-            '',
-            `FirstName:${alphaKey}*`,
-            false
-          )
-        : await _services.searchUsersNew(`${alphaKey}`, '', true);
-    }
-
-    const allUsers: any[] = resp?.PrimarySearchResults || [];
-    const filteredUsers = applyFilter(allUsers);
-
-    setstate({
-      ...state,
-      searchText: '',
-      indexSelectedKey: initialSearch ? 'A' : state.indexSelectedKey,
-      users: filteredUsers,
-      isLoading: false,
-      errorMessage: '',
-      hasError: false,
-    });
-  };
-
-  const _searchUsers = async (searchText: string): Promise<void> => {
-    try {
-      setstate({ ...state, searchText, isLoading: true });
-      if (searchText.length > 0) {
-        const searchProps: string[] =
-          props.searchProps && props.searchProps.length > 0
-            ? props.searchProps.split(',')
-            : ['FirstName', 'LastName', 'WorkEmail', 'Department'];
-        let qryText = '';
-        const finalSearchText: string = searchText
-          .replace(/ /g, '+');
-
-        // build qryText...
-        if (props.clearTextSearchProps) {
-          const tmpCTProps: string[] =
-            props.clearTextSearchProps.indexOf(',') >= 0
-              ? props.clearTextSearchProps.split(',')
-              : [props.clearTextSearchProps];
-          searchProps.forEach((srchprop, index) => {
-            const ctPresent = tmpCTProps.filter(
-              (o) => o.toLowerCase() === srchprop.toLowerCase()
-            );
-            const term =
-              ctPresent.length > 0
-                ? `${srchprop}:${searchText}*`
-                : `${srchprop}:${finalSearchText}*`;
-            qryText +=
-              index === searchProps.length - 1 ? term : term + ' OR ';
-          });
-        } else {
-          searchProps.forEach((srchprop, index) => {
-            const term = `${srchprop}:${finalSearchText}*`;
-            qryText +=
-              index === searchProps.length - 1 ? term : term + ' OR ';
-          });
-        }
-
-        const resp = await _services.searchUsersNew('', qryText, false);
-        const allUsers: any[] = resp?.PrimarySearchResults || [];
-        const filteredUsers = applyFilter(allUsers);
-
-        setstate({
-          ...state,
-          searchText,
-          indexSelectedKey: '0',
-          users: filteredUsers,
-          isLoading: false,
-          errorMessage: '',
-          hasError: false,
-        });
-        setalphaKey('0');
-      } else {
-        setstate({ ...state, searchText: '' });
-        await _searchByAlphabets(true);
-      }
-    } catch (err: any) {
-      setstate({ ...state, errorMessage: err.message, hasError: true });
-    }
-  };
-
-  const _searchBoxChanged = (newvalue: string): void => {
-    setCurrentPage(1);
-    setstate((prev) => ({ ...prev, searchText: newvalue }));
-  };
-
   useEffect(() => {
-    const debouncedSearch = setTimeout(() => {
-      if (state.searchText !== undefined) {
-        _searchUsers(state.searchText);
+    setPageSize(propPageSize ?? 10);
+  }, [propPageSize]);
+
+  // 6) Paging helper
+  const onPageUpdate = useCallback((pageNo?: number) => {
+    const pg = pageNo ?? currentPage;
+    const start = (pg - 1) * pageSize;
+    const end = pg * pageSize;
+    setPagedItems(state.users.slice(start, end));
+    setCurrentPage(pg);
+  }, [currentPage, pageSize, state.users]);
+
+  // 7) Core fetch from Graph
+  const fetchUsers = async (mode: 'initial' | 'alpha' | 'search') => {
+    setState(s => ({ ...s, isLoading: true, hasError: false }));
+    try {
+      const client = await context.msGraphClientFactory.getClient('3');
+      let req = client.api('/users').version('v1.0');
+      const selectFields = [
+        'id',
+        'displayName',
+        'jobTitle',
+        'mail',
+        'department',
+        'officeLocation',
+        'businessPhones'
+      ].join(',');
+      req = req.select(selectFields).top(999);
+
+      // apply alpha/text filters server-side
+      const odataClauses = buildGraphFilter(mode === 'initial' ? 'alpha' : mode);
+      if (odataClauses.length) {
+        req = req.filter(odataClauses.join(' and '));
       }
-    }, 300);
-    return () => clearTimeout(debouncedSearch);
+
+      const resp: any = await req.get();
+      let users: any[] = resp.value || [];
+
+      // apply dynamic filterQuery client-side
+      users = applyClientFilter(users);
+
+      setState(s => ({
+        ...s,
+        users,
+        isLoading: false,
+        hasError: false,
+        errorMessage: '',
+        indexSelectedKey: mode === 'initial' ? 'A' : (mode === 'alpha' ? alphaKey : '0'),
+      }));
+      setPagedItems(users.slice(0, pageSize));
+      setCurrentPage(1);
+    } catch (e: any) {
+      setState(s => ({
+        ...s,
+        isLoading: false,
+        hasError: true,
+        errorMessage: e.message,
+      }));
+    }
+  };
+
+  // 8) Handlers
+  const onAlphabetClick = (ev?: any) => {
+    const key = ev?.target?.innerText ?? 'A';
+    setAlphaKey(key);
+    fetchUsers('alpha');
+  };
+
+  const doSearch = (text: string) => {
+    setState(s => ({ ...s, searchText: text }));
+    fetchUsers(text.trim() ? 'search' : 'initial');
+  };
+
+  const onSearchBoxChange = (_: any, data: { value: string }) => {
+    doSearch(data.value);
+  };
+
+  const onSearchBoxKey = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') doSearch(state.searchText);
   }, [state.searchText]);
 
-  const _sortPeople = async (sortField: string): Promise<void> => {
-    let _users = [...state.users];
-    _users = _users.sort((a: any, b: any) => {
-      const aVal =
-        sortField === 'Location'
-          ? (a.BaseOfficeLocation || '').toUpperCase()
-          : (a[sortField] || '').toUpperCase();
-      const bVal =
-        sortField === 'Location'
-          ? (b.BaseOfficeLocation || '').toUpperCase()
-          : (b[sortField] || '').toUpperCase();
+  // 9) Effects
+  // initial load & on filterQuery change
+  useEffect(() => {
+    setAz(Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i)));
+    fetchUsers('initial');
+  }, [filterQuery]);
+
+  // debounce text input
+  useEffect(() => {
+    const handle = setTimeout(() => doSearch(state.searchText), 300);
+    return () => clearTimeout(handle);
+  }, [state.searchText]);
+
+  // update paging when users or pageSize change
+  useEffect(() => {
+    onPageUpdate(1);
+  }, [state.users, pageSize]);
+
+  // sort dropdown
+  const onOptionSelect = (_: any, data: OptionOnSelectData) => {
+    const field = data.optionValue as string;
+    const sorted = [...state.users].sort((a, b) => {
+      const aVal = String(a[field] || '').toLowerCase();
+      const bVal = String(b[field] || '').toLowerCase();
       return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
     });
-    setstate({ ...state, users: _users, searchString: sortField });
+    setState(s => ({ ...s, users: sorted, searchString: field }));
   };
-
-  useEffect(() => {
-    setPageSize(props.pageSize);
-    if (state.users) {
-      _onPageUpdate();
-    }
-  }, [state.users, props.pageSize]);
-
-  useEffect(() => {
-    if (alphaKey.length > 0 && alphaKey !== '0') {
-      _searchByAlphabets(false);
-    }
-  }, [alphaKey]);
-
-  useEffect(() => {
-    _loadAlphabets();
-    _searchByAlphabets(true);
-  }, [props]);
-
-  const onOptionSelect = (ev: any, data: OptionOnSelectData) => {
-    _sortPeople(data.optionValue);
-  };
-
-  const handleSearchKeyPress = React.useCallback(
-    (ev: React.KeyboardEvent<HTMLInputElement>) => {
-      if (ev.key === 'Enter') {
-        _searchUsers(state.searchText);
-      }
-    },
-    [state.searchText]
-  );
 
   const fluentStyles = useFluentStyles();
+  const color = context.microsoftTeams ? 'white' : '';
+
+  // 10) Render cards
+  const directoryGrid = pagedItems.map((u, i) => (
+    <PersonaCard
+      key={i}
+      context={context}
+      profileProperties={{
+        DisplayName: u.displayName,
+        Title: u.jobTitle,
+        PictureUrl: `/_layouts/15/userphoto.aspx?size=M&accountName=${u.mail}`,
+        Email: u.mail,
+        Department: u.department,
+        WorkPhone: u.businessPhones?.[0],
+        Location: u.officeLocation,
+      }}
+    />
+  ));
 
   return (
     <div className={styles.directory}>
       <WebPartTitle
-        displayMode={props.displayMode}
-        title={props.title}
-        updateProperty={props.updateProperty}
+        displayMode={displayMode}
+        title={title}
+        updateProperty={updateProperty}
       />
+
       <div className={styles.searchBox}>
         <SearchBox
-          type="search"
           placeholder={strings.SearchPlaceHolder}
-          className={styles.searchTextBox}
           value={state.searchText}
-          onKeyDown={handleSearchKeyPress}
-          onChange={(_, data) => _searchBoxChanged(data.value)}
+          onKeyDown={onSearchBoxKey}
+          onChange={onSearchBoxChange}
         />
-        <div
-          className={mergeClasses(
-            fluentStyles.alphabets,
-            fluentStyles.horizontal
-          )}
-        >
+        <div className={mergeClasses(fluentStyles.alphabets, fluentStyles.horizontal)}>
           <Overflow minimumVisible={2}>
             <TabList
               selectedValue={state.indexSelectedKey}
-              onTabSelect={_alphabetChange}
+              onTabSelect={onAlphabetClick}
               className={fluentStyles.tabList}
             >
-              {az.map((index: string) => (
-                <OverflowItem key={index} id={index}>
-                  <Tab value={index}>{index}</Tab>
+              {az.map(letter => (
+                <OverflowItem key={letter} id={letter}>
+                  <Tab value={letter}>{letter}</Tab>
                 </OverflowItem>
               ))}
-              <OverflowAlphabetsMenu
-                onTabSelect={_alphabetChange}
-                tabs={az}
-              />
+              <OverflowAlphabetsMenu tabs={az} onTabSelect={onAlphabetClick} />
             </TabList>
           </Overflow>
         </div>
       </div>
+
       {state.isLoading ? (
-        <div style={{ marginTop: '10px' }}>
-          <Shimmer />
-        </div>
+        <div style={{ marginTop: 10 }}><Shimmer /></div>
       ) : state.hasError ? (
-        <div style={{ marginTop: '10px' }}>
-          <MessageBar intent="error">
-            <MessageBarBody>
-              <MessageBarTitle>{state.errorMessage}</MessageBarTitle>
-            </MessageBarBody>
-          </MessageBar>
-        </div>
-      ) : !pagedItems || pagedItems.length === 0 ? (
+        <MessageBar intent="error">
+          <MessageBarBody>
+            <MessageBarTitle>{state.errorMessage}</MessageBarTitle>
+          </MessageBarBody>
+        </MessageBar>
+      ) : directoryGrid.length === 0 ? (
         <div className={styles.noUsers}>
-          <People48Filled style={{ fontSize: '54px', color }} />
+          <People48Filled style={{ fontSize: 54, color }} />
           <Title2 style={{ marginLeft: 5, color }}>
             {strings.DirectoryMessage}
           </Title2>
         </div>
       ) : (
         <>
-          <div style={{ width: '100%', display: 'inline-block' }}>
-            <Paging
-              totalItems={state.users.length}
-              itemsCountPerPage={pageSize}
-              onPageUpdate={_onPageUpdate}
-              currentPage={currentPage}
-            />
-          </div>
+          <Paging
+            totalItems={state.users.length}
+            itemsCountPerPage={pageSize}
+            currentPage={currentPage}
+            onPageUpdate={onPageUpdate}
+          />
+
           <div className={styles.dropDownSortBy}>
-            <Stack
-              horizontal
-              horizontalAlign="center"
-              wrap
-              tokens={wrapStackTokens}
-            >
+            <Stack horizontal horizontalAlign="center" wrap tokens={wrapStackTokens}>
               <Field label={strings.DropDownPlaceLabelMessage}>
                 <Dropdown
                   placeholder={strings.DropDownPlaceHolderMessage}
                   value={state.searchString}
                   onOptionSelect={onOptionSelect}
                 >
-                  {orderOptions.map((option) => (
-                    <Option key={option.value} value={option.value}>
-                      {option.text}
+                  {[
+                    { value: 'displayName', text: 'Name' },
+                    { value: 'jobTitle', text: 'Job Title' },
+                    { value: 'department', text: 'Department' },
+                    { value: 'officeLocation', text: 'Location' },
+                  ].map(opt => (
+                    <Option key={opt.value} value={opt.value}>
+                      {opt.text}
                     </Option>
                   ))}
                 </Dropdown>
               </Field>
             </Stack>
           </div>
+
           <Stack
             horizontal
-            horizontalAlign={
-              props.useSpaceBetween ? 'space-between' : 'center'
-            }
             wrap
+            horizontalAlign={useSpaceBetween ? 'space-between' : 'center'}
             tokens={wrapStackTokens}
           >
-            {diretoryGrid}
+            {directoryGrid}
           </Stack>
-          <div style={{ width: '100%', display: 'inline-block' }}>
-            <Paging
-              totalItems={state.users.length}
-              itemsCountPerPage={pageSize}
-              onPageUpdate={_onPageUpdate}
-              currentPage={currentPage}
-            />
-          </div>
+
+          <Paging
+            totalItems={state.users.length}
+            itemsCountPerPage={pageSize}
+            currentPage={currentPage}
+            onPageUpdate={onPageUpdate}
+          />
         </>
       )}
     </div>
