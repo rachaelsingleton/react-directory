@@ -14,6 +14,6 @@ define([], function() {
     "ClearTextSearchPropsDesc":"Enter the properties separated by comma to be sent as it is without replacing space with '+'",
     "PagingLabel": "Results per page",
     "FilterQueryLabel": "Filter Query",
-    "FilterQueryDesc": "Additional search filter e.g. Department:IT OR BaseOfficeLocation:London"
+    "FilterQueryDesc": "Additional search filter e.g. Department:IT OR officeLocation:Portland"
   }
 });
