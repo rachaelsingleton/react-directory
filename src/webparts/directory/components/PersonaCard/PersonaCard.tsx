@@ -11,6 +11,7 @@ import {
   Card,
   Subtitle1,
   Text,
+  mergeClasses,
 } from '@fluentui/react-components';
 import {
   Call16Filled,
@@ -93,7 +94,7 @@ export class PersonaCard extends React.Component<
             {this.props.profileProperties.Department}
           </Text>
           {this.props.profileProperties.Email && (
-            <div className={(styles.textOverflow, styles.others)}>
+            <div className={mergeClasses(styles.textOverflow, styles.others)}>
               <Mail16Filled style={{ fontSize: '12px' }} />
               <span style={{ marginLeft: 5, fontSize: '12px' }}>
                 {this.props.profileProperties.Email}
@@ -112,7 +113,7 @@ export class PersonaCard extends React.Component<
             ''
           )}
           {this.props.profileProperties.Location ? (
-            <div className={(styles.textOverflow, styles.others)}>
+            <div className={mergeClasses(styles.textOverflow, styles.others)}>
               <Location16Filled style={{ fontSize: '12px' }} />
               <span style={{ marginLeft: 5, fontSize: '12px' }}>
                 {' '}
