@@ -86,6 +86,10 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
     }
   };
 
+  // properties that cannot be used in Graph $filter and must be
+  // processed on the client
+  const clientFilterFields = new Set(['officeLocation']);
+
   // 3) Apply filterQuery client-side
   const applyClientFilter = (users: any[]): any[] => {
     if (!filterFieldValue) return users;
@@ -97,7 +101,24 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
     );
   };
 
-  // 4) Build $filter for alpha & text searches (Graph-supported)
+  // 4) Apply text search for fields not supported by Graph
+  const applyClientSearch = (users: any[]): any[] => {
+    if (!state.searchText.trim()) return users;
+    const txt = state.searchText.trim().toLowerCase();
+    const propsToSearch = searchProps
+      ? searchProps.split(',').map(s => s.trim())
+      : ['FirstName', 'LastName', 'WorkEmail', 'Department'];
+    return users.filter(u =>
+      propsToSearch.some(p => {
+        const field = graphFieldName(p.toLowerCase());
+        return clientFilterFields.has(field)
+          ? String(u[field] || '').toLowerCase().startsWith(txt)
+          : false;
+      })
+    );
+  };
+
+  // 5) Build $filter for alpha & text searches (Graph-supported)
   const buildGraphFilter = (mode: 'initial' | 'alpha' | 'search'): string[] => {
     const clauses: string[] = [];
 
@@ -113,9 +134,13 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
       const propsToSearch = searchProps
         ? searchProps.split(',').map(s => s.trim())
         : ['FirstName', 'LastName', 'WorkEmail', 'Department'];
-      const sub = propsToSearch.map(p =>
-        `startswith(${graphFieldName(p.toLowerCase())},'${txt}')`
-      );
+      const sub: string[] = [];
+      propsToSearch.forEach(p => {
+        const field = graphFieldName(p.toLowerCase());
+        if (!clientFilterFields.has(field)) {
+          sub.push(`startswith(${field},'${txt}')`);
+        }
+      });
       if (sub.length) {
         clauses.push(`(${sub.join(' or ')})`);
       }
@@ -124,7 +149,7 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
     return clauses;
   };
 
-  // 5) Component state
+  // 6) Component state
   const [az, setAz] = useState<string[]>([]);
   const [alphaKey, setAlphaKey] = useState<string>('All');
   const [state, setState] = useState<IDirectoryState>({
@@ -144,7 +169,7 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
     setPageSize(propPageSize ?? 10);
   }, [propPageSize]);
 
-  // 6) Paging helper
+  // 7) Paging helper
   const onPageUpdate = useCallback((pageNo?: number) => {
     const pg = pageNo ?? currentPage;
     const start = (pg - 1) * pageSize;
@@ -153,7 +178,7 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
     setCurrentPage(pg);
   }, [currentPage, pageSize, state.users]);
 
-  // 7) Core fetch from Graph
+  // 8) Core fetch from Graph
   const fetchUsers = async (mode: 'initial' | 'alpha' | 'search') => {
     setState(s => ({ ...s, isLoading: true, hasError: false }));
     try {
@@ -181,6 +206,8 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
 
       // apply dynamic filterQuery client-side
       users = applyClientFilter(users);
+      // apply text search on unsupported fields client-side
+      users = applyClientSearch(users);
 
       // determine which tab stays selected
       const selKey = mode === 'search' ? '0' : alphaKey;
@@ -206,7 +233,7 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
     }
   };
 
-  // 8) Handlers
+  // 9) Handlers
   const onAlphabetClick = (ev?: any) => {
     const key = ev?.target?.innerText ?? 'All';
     setAlphaKey(key);
@@ -226,7 +253,7 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
     if (e.key === 'Enter') doSearch(state.searchText);
   }, [state.searchText]);
 
-  // 9) Effects
+  // 10) Effects
   useEffect(() => {
     // build [All, A, B, … Z]
     const letters = Array.from({ length: 26 }, (_, i) =>
@@ -248,7 +275,7 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
     onPageUpdate(1);
   }, [state.users, pageSize]);
 
-  // sort dropdown
+  // 11) Sort dropdown
   const onOptionSelect = (_: any, data: OptionOnSelectData) => {
     const field = data.optionValue as string;
     const sorted = [...state.users].sort((a, b) => {
@@ -262,7 +289,7 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
   const fluentStyles = useFluentStyles();
   const color = context.microsoftTeams ? 'white' : '';
 
-  // 10) Render cards
+  // 12) Render cards
   const directoryGrid = pagedItems.map((u, i) => (
     <PersonaCard
       key={i}
