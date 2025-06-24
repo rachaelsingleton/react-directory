@@ -59,11 +59,6 @@ Search People from Organization Directory and show live persona card on hover.
 |Results per page | number | Yes | Number of people result to be displayed per page. Max of **20** is allowed, default of **10** is set.|
 |Filter Query| text | No | Additional search filter such as `Department:IT` or `BaseOfficeLocation:London`.|
 
-> **Note**
-> The Microsoft Graph `/users` endpoint does not support filtering on `officeLocation`.
-> If you include `Location` or `officeLocation` in **Properties to search**, the
-> web part retrieves users from Graph and filters them on the client.
-
 ## Contributors
 
 * [João Mendes](https://github.com/joaojmendes)
