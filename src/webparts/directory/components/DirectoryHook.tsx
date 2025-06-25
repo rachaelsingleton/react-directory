@@ -63,14 +63,33 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
     useSpaceBetween
   } = props;
 
-  // 1) Parse the dynamic filterQuery (e.g. "department:Retail")
-  const filterFieldValue = useMemo(() => {
-    if (!filterQuery) return null;
-    const [raw, ...rest] = filterQuery.split(':');
-    return {
-      field: raw.trim().toLowerCase(),
-      value: rest.join(':').trim().toLowerCase(),
-    };
+  // 1) Parse the dynamic filterQuery which can contain multiple clauses
+  interface IFilterClause { field: string; value: string; op?: 'and' | 'or' }
+
+  const filterClauses = useMemo<IFilterClause[]>(() => {
+    if (!filterQuery) return [];
+    const parts = filterQuery.split(/\s+(AND|OR)\s+/i);
+    const clauses: IFilterClause[] = [];
+    let pendingOp: 'and' | 'or' | undefined = undefined;
+    for (const part of parts) {
+      if (!part.trim()) continue;
+      if (/^and$/i.test(part)) {
+        pendingOp = 'and';
+        continue;
+      }
+      if (/^or$/i.test(part)) {
+        pendingOp = 'or';
+        continue;
+      }
+      const [raw, ...rest] = part.split(':');
+      clauses.push({
+        field: raw.trim().toLowerCase(),
+        value: rest.join(':').trim().toLowerCase(),
+        op: pendingOp,
+      });
+      pendingOp = undefined;
+    }
+    return clauses;
   }, [filterQuery]);
 
   // 2) Map alias → real Graph property names
@@ -88,13 +107,24 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
 
   // 3) Apply filterQuery client-side
   const applyClientFilter = (users: any[]): any[] => {
-    if (!filterFieldValue) return users;
-    const key = graphFieldName(filterFieldValue.field);
-    return users.filter(u =>
-      String(u[key] || '')
-        .toLowerCase()
-        .trim() === filterFieldValue.value
-    );
+    if (!filterClauses.length) return users;
+
+    const matches = (u: any): boolean => {
+      let result: boolean | undefined = undefined;
+      filterClauses.forEach(clause => {
+        const key = graphFieldName(clause.field);
+        const match = String(u[key] || '')
+          .toLowerCase()
+          .trim() === clause.value;
+
+        if (result === undefined) result = match;
+        else if (clause.op === 'or') result = result || match;
+        else result = result && match;
+      });
+      return result ?? true;
+    };
+
+    return users.filter(u => matches(u));
   };
 
   // 4) Build $filter for alpha & text searches (Graph-supported)
