@@ -196,15 +196,15 @@ const DirectoryHook: React.FC<IDirectoryProps> = (props) => {
         'mail',
         'department',
         'officeLocation',
-        'businessPhones'
+        'businessPhones',
+        'accountEnabled'
       ].join(',');
       req = req.select(selectFields).top(999);
 
       // apply alpha/text filters server-side
       const odataClauses = buildGraphFilter(mode);
-      if (odataClauses.length) {
-        req = req.filter(odataClauses.join(' and '));
-      }
+      odataClauses.push('accountEnabled eq true');
+      req = req.filter(odataClauses.join(' and '));
 
       const resp: any = await req.get();
       let users: any[] = resp.value || [];
